@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TV Cast AirPlay</string>
+    <string name="ready">Ready — on your iPhone, tap AirPlay and pick this TV</string>
+    <string name="overlay_btn">Allow auto-open in background</string>
+    <string name="notif_title">AirPlay receiver running</string>
+</resources>
