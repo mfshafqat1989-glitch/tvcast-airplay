@@ -26,7 +26,21 @@ jobs:
           gradle-version: '8.14.3'
 
       - name: Build release APK
-        run: gradle assembleRelease --no-daemon --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon 2>&1 | tee build.log
+
+      - name: Show build errors
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "^e: |error:|What went wrong|> |Could not|FAILURE" build.log | head -40 > errors.txt || true
+          echo "## Build errors" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat errors.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          while IFS= read -r line; do echo "::error::${line}"; done < <(head -10 errors.txt)
 
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk TVCast-AirPlay.apk
