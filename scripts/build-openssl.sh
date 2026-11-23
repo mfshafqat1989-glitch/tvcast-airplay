@@ -31,7 +31,7 @@ for ABI in armeabi-v7a arm64-v8a; do
   (
     cd "$SRC"
     ./Configure "$TARGET" -D__ANDROID_API__=$API -fPIC \
-      no-shared no-tests no-apps no-docs no-ui-console no-engine no-dso no-legacy \
+      no-shared no-tests no-ui-console no-engine no-dso no-legacy \
       --prefix="$OUT/$ABI" --libdir=lib
     make -j"$(nproc)" build_libs
     make install_dev
