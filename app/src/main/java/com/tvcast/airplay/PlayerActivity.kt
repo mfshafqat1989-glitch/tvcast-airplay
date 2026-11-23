@@ -64,6 +64,8 @@ class PlayerActivity : Activity(), PlaybackBus.Listener {
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http)))
             .build()
         playerView.player = player
+        playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+        playerView.controllerAutoShow = false
 
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
