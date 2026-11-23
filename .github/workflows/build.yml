@@ -3,8 +3,6 @@ name: Build APK
 on:
   push:
     branches: [main, master]
-    tags: ['v*']
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -25,6 +23,17 @@ jobs:
         with:
           gradle-version: '8.14.3'
 
+      - name: Cache OpenSSL for Android
+        id: ossl
+        uses: actions/cache@v4
+        with:
+          path: openssl-android
+          key: openssl-android-3.0.15-api24-v1-${{ hashFiles('scripts/build-openssl.sh') }}
+
+      - name: Build OpenSSL for Android
+        if: steps.ossl.outputs.cache-hit != 'true'
+        run: bash scripts/build-openssl.sh
+
       - name: Build release APK
         shell: bash
         run: |
@@ -35,12 +44,13 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          grep -E "^e: |error:|What went wrong|> |Could not|FAILURE" build.log | head -40 > errors.txt || true
+          touch build.log
+          grep -E "^e: |error:|error: |What went wrong|^> |Could not|FAILURE|undefined reference|fatal error" build.log | head -60 > errors.txt || true
           echo "## Build errors" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat errors.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          while IFS= read -r line; do echo "::error::${line}"; done < <(head -10 errors.txt)
+          while IFS= read -r line; do echo "::error::${line}"; done < <(head -15 errors.txt)
 
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk TVCast-AirPlay.apk
@@ -50,12 +60,11 @@ jobs:
           name: TVCast-AirPlay
           path: TVCast-AirPlay.apk
 
-      - name: Publish release (every push to main)
-        if: github.event_name != 'pull_request'
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: TV Cast AirPlay v1.0.${{ github.run_number }}
+          tag_name: v2.0.${{ github.run_number }}
+          name: TV Cast AirPlay v2.0.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           make_latest: true
           files: TVCast-AirPlay.apk

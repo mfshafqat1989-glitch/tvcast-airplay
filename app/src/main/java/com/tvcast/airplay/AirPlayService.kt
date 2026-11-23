@@ -10,20 +10,34 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import kotlin.concurrent.thread
 import kotlin.random.Random
 
-/** Keeps the AirPlay receiver alive in the background. */
+/** Keeps the AirPlay receiver running in the background. */
 class AirPlayService : Service() {
 
-    private var server: AirPlayServer? = null
     private var advertiser: Advertiser? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var cpuLock: PowerManager.WakeLock? = null
+    private val handler = Handler(Looper.getMainLooper())
+
+    private val updateCheck = object : Runnable {
+        override fun run() {
+            thread(name = "update-check") { Updater.backgroundCheck(applicationContext) }
+            handler.postDelayed(this, 6 * 60 * 60 * 1000L) // every 6 hours
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -31,35 +45,44 @@ class AirPlayService : Service() {
 
         val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         multicastLock = wifi.createMulticastLock("airplay").apply { setReferenceCounted(false); acquire() }
+        @Suppress("DEPRECATION")
+        wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "airplay")
+            .apply { setReferenceCounted(false); acquire() }
+        cpuLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tvcast:airplay")
+            .apply { setReferenceCounted(false); acquire() }
 
-        val id = deviceId(this)
         val name = deviceName(this)
-        val srv = AirPlayServer(applicationContext, id).also { it.start() }
-        server = srv
-        instance = srv
-        port = srv.port
-
-        advertiser = Advertiser(this).apply {
-            register(name, "_airplay._tcp", srv.port, mapOf(
-                "deviceid" to id,
-                "features" to AirPlayServer.FEATURES_HEX,
-                "model" to AirPlayServer.MODEL,
-                "srcvers" to AirPlayServer.SRCVERS,
-                "flags" to "0x4",
-                "vv" to "2",
-            ))
+        val mac = deviceId(this)
+        val e = AirPlayEngine(applicationContext)
+        val port = e.start(name, mac)
+        engine = e
+        if (port > 0) {
+            running = true
+            if (!e.nativeMdnsOk()) {
+                Log.w(TAG, "Built-in mDNS unavailable, using Android NSD")
+                advertiser = Advertiser(this).apply {
+                    register(mac.replace(":", "") + "@" + name, "_raop._tcp", port, e.nativeGetTxt(0))
+                    register(name, "_airplay._tcp", port, e.nativeGetTxt(1))
+                }
+            }
+        } else {
+            error = "AirPlay engine failed to start (code $port)"
         }
-        running = true
+        handler.postDelayed(updateCheck, 30_000)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
 
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
         running = false
-        instance = null
         advertiser?.unregisterAll()
-        server?.stop()
+        engine?.stop()
+        engine = null
         runCatching { multicastLock?.release() }
+        runCatching { wifiLock?.release() }
+        runCatching { cpuLock?.release() }
         super.onDestroy()
     }
 
@@ -85,11 +108,12 @@ class AirPlayService : Service() {
     }
 
     companion object {
-        private const val CHANNEL = "airplay"
+        private const val TAG = "AirPlayService"
+        const val CHANNEL = "airplay"
 
         @Volatile var running = false
-        @Volatile var instance: AirPlayServer? = null
-        @Volatile var port = 0
+        @Volatile var engine: AirPlayEngine? = null
+        @Volatile var error: String? = null
 
         fun start(context: Context) {
             val i = Intent(context, AirPlayService::class.java)
@@ -103,7 +127,7 @@ class AirPlayService : Service() {
             return if (n.isNullOrBlank()) "Android TV (${Build.MODEL})" else n
         }
 
-        /** A stable random MAC-style id, so the iPhone remembers this TV. */
+        /** A stable random MAC-style id, so Apple devices remember this receiver. */
         fun deviceId(context: Context): String {
             val prefs = context.getSharedPreferences("airplay", Context.MODE_PRIVATE)
             prefs.getString("deviceid", null)?.let { return it }

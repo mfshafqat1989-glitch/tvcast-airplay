@@ -5,26 +5,25 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Log
 
-/** Announces the TV on the local network (Bonjour / mDNS) so iPhones see it in the AirPlay list. */
+/**
+ * Backup Bonjour announcer using Android's own NSD service.
+ * Only used if the engine's built-in mDNS responder couldn't open the network port.
+ */
 class Advertiser(context: Context) {
 
     private val nsd = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val active = mutableListOf<NsdManager.RegistrationListener>()
 
-    fun register(name: String, type: String, port: Int, txt: Map<String, String>) {
+    fun register(name: String, type: String, port: Int, txt: ByteArray?) {
         val info = NsdServiceInfo().apply {
             serviceName = name
             serviceType = type
             this.port = port
-            txt.forEach { (k, v) -> setAttribute(k, v) }
+            parseTxt(txt).forEach { (k, v) -> runCatching { setAttribute(k, v) } }
         }
         val listener = object : NsdManager.RegistrationListener {
-            override fun onServiceRegistered(info: NsdServiceInfo) {
-                Log.i(TAG, "Registered ${info.serviceName} $type")
-            }
-            override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) {
-                Log.w(TAG, "Registration failed $type: $errorCode")
-            }
+            override fun onServiceRegistered(info: NsdServiceInfo) { Log.i(TAG, "Registered $type") }
+            override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) { Log.w(TAG, "Failed $type: $errorCode") }
             override fun onServiceUnregistered(info: NsdServiceInfo) {}
             override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) {}
         }
@@ -39,6 +38,23 @@ class Advertiser(context: Context) {
     fun unregisterAll() {
         active.forEach { runCatching { nsd.unregisterService(it) } }
         active.clear()
+    }
+
+    /** DNS TXT record: a list of length-prefixed "key=value" strings. */
+    private fun parseTxt(txt: ByteArray?): List<Pair<String, String>> {
+        if (txt == null) return emptyList()
+        val out = mutableListOf<Pair<String, String>>()
+        var i = 0
+        while (i < txt.size) {
+            val len = txt[i].toInt() and 0xff
+            i++
+            if (len == 0 || i + len > txt.size) break
+            val s = String(txt, i, len, Charsets.UTF_8)
+            i += len
+            val eq = s.indexOf('=')
+            if (eq > 0) out += s.substring(0, eq) to s.substring(eq + 1)
+        }
+        return out
     }
 
     companion object { private const val TAG = "Advertiser" }

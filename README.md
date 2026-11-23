@@ -1,36 +1,43 @@
 # TV Cast AirPlay
 
-An AirPlay receiver for Android TV / Google TV. Your TV shows up in the iPhone's AirPlay list, and you can send videos and photos to it.
+AirPlay receiver for Android TV, Google TV and Android phones. Your TV shows up in the iPhone's **Screen Mirroring** and AirPlay lists.
 
-## Get the APK (no computer setup needed)
+**Download the latest APK:**
+https://github.com/mfshafqat1989-glitch/tvcast-airplay/releases/latest/download/TVCast-AirPlay.apk
 
-1. Make a new repository on GitHub and upload everything in this folder, **including the hidden `.github` folder**.
-2. Open the repo's **Actions** tab. The "Build APK" job starts by itself and takes about 3–5 minutes.
-3. When it's green, open the job and download **TVCast-AirPlay** under "Artifacts". It's a zip with the APK inside.
-4. Optional: push a tag like `v1.0` and the APK gets attached to a GitHub Release, so you can download it straight onto the TV.
-
-## Install on the TV
-
-- Install the **Downloader** app on the TV, enable "Install unknown apps" for it, and open the APK link (for example the Release link).
-- Or copy the APK over on a USB stick and open it with a file manager.
-
-## Use it
-
-1. Open **TV Cast AirPlay** on the TV. The phone and TV need to be on the same Wi-Fi.
-2. On the iPhone, tap the AirPlay icon on a video or photo, then pick the TV.
-3. Press **"Allow auto-open in background"** once so videos open even when the app isn't on screen.
-
-## What works and what doesn't
+## What it does
 
 | Feature | Status |
 |---|---|
-| TV appears in the AirPlay list | ✅ |
-| Sending video links (MP4, HLS), with pause, seek and stop from the phone | ✅ in apps that use classic AirPlay video |
-| Sending photos | ✅ |
-| **iPhone screen mirroring** | ❌ needs Apple's FairPlay encryption, which isn't included |
-| Music-only AirPlay (AirPlay audio) | ❌ |
-| DRM apps (Netflix, Disney+, Apple TV+) | ❌ they only send to real Apple devices |
+| iPhone / iPad / Mac **screen mirroring** (H.264, plus H.265 on devices that support it) | ✅ |
+| Mirroring audio (AAC-ELD) | ✅ |
+| AirPlay music (Apple Music, Spotify AirPlay and so on, ALAC/AAC) | ✅ |
+| Volume control from the iPhone | ✅ |
+| Auto-update from GitHub Releases | ✅ |
+| "Cast video link" mode (YouTube and similar apps that send a link instead of mirroring) | ❌ not yet |
+| DRM apps (Netflix, Disney+, Apple TV+) | ❌ they only play on real Apple devices |
 
-## Tech
+## Use it
 
-Kotlin, Media3/ExoPlayer, Android NSD (Bonjour). The receiver code is in `app/src/main/java/com/tvcast/airplay/`.
+1. Install the APK. If an older version (v1.x) is installed, uninstall it first, because v2 is signed with a new key.
+2. Open **TV Cast AirPlay**. The phone and the TV must be on the same Wi-Fi.
+3. Press **"Allow auto-open in background"** once, so mirroring pops up even when the app isn't open.
+4. On the iPhone, open Control Centre → **Screen Mirroring** and pick the TV.
+
+## Updates
+
+The app checks GitHub when it opens and every 6 hours. With **Auto-update** on, it downloads new versions by itself. Android always asks you to tap **Install** to confirm. The first time, you'll also be asked to allow this app to install updates.
+
+Every push to `main` builds a new APK automatically (GitHub Actions) and publishes it as the latest release.
+
+## How it's built
+
+- `app/src/main/cpp/uxplay`: the AirPlay engine from [UxPlay](https://github.com/FDH2/UxPlay) (GPLv3), including its built-in mDNS responder
+- `app/src/main/cpp/libplist`: [libplist](https://github.com/libimobiledevice/libplist) (LGPL 2.1)
+- `app/src/main/cpp/alac`: Apple's [ALAC decoder](https://github.com/macosforge/alac) (Apache 2.0)
+- OpenSSL 3 (libcrypto) is compiled for Android in CI by `scripts/build-openssl.sh`
+- Kotlin: hardware decoding with MediaCodec, audio with AudioTrack
+
+Because it includes UxPlay, this app is licensed under **GPLv3** (see `LICENSE`).
+
+The signing key in `keystore/` is public on purpose. It only keeps updates installing over each other, so don't reuse it for anything else.
